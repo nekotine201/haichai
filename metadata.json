@@ -1,0 +1,8 @@
+{
+  "name": "Haichai Script Studio",
+  "description": "Bộ công cụ lên kịch bản TikTok tự động dựa trên Content Bible cho thương hiệu Haichai",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
