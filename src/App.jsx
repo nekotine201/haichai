@@ -378,22 +378,51 @@ const mergeTopicsPreservingLocalSelection = (incomingTopics = [], currentTopics 
   });
 };
 
-// Firestore cũng có thể trả snapshot cũ ngay sau khi AI vừa tạo draft.
-// Nếu ghi đè thẳng bằng snapshot cũ, app báo tạo thành công nhưng tab Draft lại trống.
-const mergeDraftScriptsPreservingLocal = (incomingDrafts = [], currentDrafts = []) => {
+// Firestore cũng có thể trả snapshot cũ ngay sau khi AI vừa tạo draft hoặc người dùng vừa duyệt/xóa draft.
+// Lọc bỏ những draft đã bị xóa/duyệt locally để không bị snapshot Firestore cũ nhảy đè lại.
+const mergeDraftScriptsPreservingLocal = (
+  incomingDrafts = [],
+  currentDrafts = [],
+  deletedDraftIds = new Set()
+) => {
   const draftsById = new Map();
 
   incomingDrafts.forEach((draft) => {
-    if (draft?.id) draftsById.set(draft.id, draft);
+    if (draft?.id && !deletedDraftIds.has(draft.id)) {
+      draftsById.set(draft.id, draft);
+    }
   });
 
   currentDrafts.forEach((draft) => {
-    if (draft?.id && !draftsById.has(draft.id)) {
+    if (
+      draft?.id &&
+      !deletedDraftIds.has(draft.id) &&
+      !draftsById.has(draft.id)
+    ) {
       draftsById.set(draft.id, draft);
     }
   });
 
   return Array.from(draftsById.values());
+};
+
+const mergeScriptsPreservingLocal = (
+  incomingScripts = [],
+  currentScripts = []
+) => {
+  const scriptsById = new Map();
+
+  incomingScripts.forEach((script) => {
+    if (script?.id) scriptsById.set(script.id, script);
+  });
+
+  currentScripts.forEach((script) => {
+    if (script?.id && !scriptsById.has(script.id)) {
+      scriptsById.set(script.id, script);
+    }
+  });
+
+  return Array.from(scriptsById.values());
 };
 
 // Chặn snapshot Firestore cũ ghi đè draft vừa tạo.
@@ -1198,6 +1227,7 @@ export default function App() {
   });
   const syncingFromCloudRef = useRef(false);
   const pendingDraftIdsRef = useRef(new Set());
+  const deletedDraftIdsRef = useRef(new Set());
   const lastDraftLocalChangeAtRef = useRef(0);
 
   // AI key chỉ lưu ở máy người dùng, không đẩy lên Firestore.
@@ -1233,11 +1263,21 @@ export default function App() {
       if (error.code === 'auth/unauthorized-domain' || String(error.message).includes('unauthorized-domain')) {
         const currentDomain = window.location.hostname;
         errMsg = (
-          <div>
-            <p className="font-semibold mb-1">Lỗi tên miền chưa được cấp quyền (unauthorized-domain):</p>
-            <p className="mb-2">Tên miền hiện tại <code className="bg-red-100 px-1 py-0.5 rounded text-xs font-mono">{currentDomain}</code> chưa được thêm vào danh sách Authorized Domains của dự án Firebase.</p>
-            <p className="mb-2 text-xs">Vui lòng mở Firebase Console, vào mục <strong>Authentication &gt; Settings &gt; Authorized domains</strong> và thêm tên miền trên để có thể đồng bộ.</p>
-            <p className="text-xs font-medium text-slate-800">Bạn có thể bấm nút "Sử dụng Ngoại tuyến (Offline Mode)" bên dưới để tiếp tục trải nghiệm toàn bộ tính năng kịch bản mà không cần đăng nhập!</p>
+          <div className="space-y-2 text-xs text-red-800">
+            <p className="font-bold text-sm text-red-900">Lỗi tên miền chưa được cấp quyền (unauthorized-domain):</p>
+            <p>Tên miền hiện tại: <code className="bg-red-100 px-1.5 py-0.5 rounded font-mono font-bold text-red-900">{currentDomain}</code></p>
+            
+            <div className="bg-white/80 p-3 rounded-lg border border-red-200 space-y-1.5 text-slate-700 text-[11px]">
+              <p className="font-bold text-red-800 text-xs">Các nguyên nhân & cách khắc phục:</p>
+              <p>1. <strong>Firebase Console:</strong> Vào <i>Authentication &gt; Settings &gt; Authorized domains</i>. Thêm <code className="font-mono text-red-700 bg-red-50 px-1">{currentDomain}</code> (Lưu ý: KHÔNG gõ <code className="line-through">https://</code> hay dấu <code className="line-through">/</code> ở cuối).</p>
+              <p>2. <strong>Tên miền Preview Vercel:</strong> Mỗi lần commit Vercel tạo ra 1 URL preview mới (ví dụ <code className="font-mono text-slate-600">haichai-chi-git-main...vercel.app</code>). Hãy dùng tên miền chính <code className="font-mono text-indigo-700 bg-indigo-50 px-1">haichai-chi.vercel.app</code> hoặc thêm cả tên miền preview này vào Firebase.</p>
+              <p>3. <strong>Google Cloud Console OAuth:</strong> Vào <i>GCP Console &gt; Credentials &gt; OAuth 2.0 Client IDs (Web client)</i>. Thêm <code className="font-mono text-indigo-700 bg-indigo-50 px-1">https://{currentDomain}</code> vào <strong>Authorized JavaScript origins</strong>.</p>
+              <p>4. <strong>Đợi 2-5 phút:</strong> Cấu hình tên miền mới của Google & Firebase có thể mất 2 - 5 phút để có hiệu lực.</p>
+            </div>
+
+            <p className="font-medium text-slate-800 pt-1">
+              Bạn có thể bấm <strong>"Sử dụng Ngoại tuyến (Offline Mode)"</strong> bên dưới để dùng ngay kịch bản mà không cần chờ cấu hình Firebase!
+            </p>
           </div>
         );
       }
@@ -1472,7 +1512,11 @@ export default function App() {
             const data = snapshot.data();
 
             if (typeof data.bible === 'string') setBible(data.bible);
-            if (Array.isArray(data.scripts)) setScripts(data.scripts);
+            if (Array.isArray(data.scripts)) {
+              setScripts((currentScripts) =>
+                mergeScriptsPreservingLocal(data.scripts, currentScripts)
+              );
+            }
             if (Array.isArray(data.draftScripts)) {
               const incomingDrafts = data.draftScripts;
               const incomingDraftIds = new Set(
@@ -1495,7 +1539,8 @@ export default function App() {
                 setDraftScripts((currentDrafts) =>
                   mergeDraftScriptsPreservingLocal(
                     incomingDrafts,
-                    currentDrafts
+                    currentDrafts,
+                    deletedDraftIdsRef.current
                   )
                 );
               }
@@ -1855,23 +1900,101 @@ export default function App() {
     }
   };
 
-  const handleSaveDraftToLibrary = (draftId) => {
-    const draftToSave = draftScripts.find((d) => d.id === draftId);
-    if (draftToSave) {
-      const newScript = { ...draftToSave, status: 'approved' };
-      saveScriptsToStorage([...scripts, newScript]);
+  const handleSaveDraftToLibrary = async (draftId) => {
+    const currentDrafts = Array.isArray(latestDataRef.current.draftScripts)
+      ? latestDataRef.current.draftScripts
+      : draftScripts;
+    const currentScripts = Array.isArray(latestDataRef.current.scripts)
+      ? latestDataRef.current.scripts
+      : scripts;
 
-      setDraftScripts((drafts) => {
-        const newDrafts = drafts.filter((d) => d.id !== draftId);
-        return newDrafts;
-      });
-      showAlert('Thành công', 'Đã lưu vào thư viện!');
+    const draftToSave = currentDrafts.find((d) => d.id === draftId);
+    if (!draftToSave) return;
+
+    const newScript = {
+      ...draftToSave,
+      status: 'approved',
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedScripts = [newScript, ...currentScripts.filter((s) => s.id !== draftId)];
+    const updatedDrafts = currentDrafts.filter((d) => d.id !== draftId);
+
+    deletedDraftIdsRef.current.add(draftId);
+    pendingDraftIdsRef.current.delete(draftId);
+
+    setScripts(updatedScripts);
+    setDraftScripts(updatedDrafts);
+
+    localStorage.setItem('haichai_scripts', JSON.stringify(updatedScripts));
+    localStorage.setItem('haichai_drafts', JSON.stringify(updatedDrafts));
+
+    latestDataRef.current = {
+      ...latestDataRef.current,
+      scripts: updatedScripts,
+      draftScripts: updatedDrafts,
+    };
+
+    if (viewingScript?.id === draftId) {
+      setViewingScript(null);
     }
+
+    if (currentUser && cloudReady && !currentUser.isOffline) {
+      try {
+        await setDoc(
+          getAppDataRef(),
+          {
+            ...latestDataRef.current,
+            ownerEmail: currentUser.email || '',
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        setSyncStatus('Đã duyệt kịch bản & đồng bộ Cloud');
+        setLastSyncedAt(new Date());
+      } catch (error) {
+        console.error('Firestore approval sync error:', error);
+      }
+    }
+
+    showAlert('Thành công', 'Đã duyệt kịch bản và lưu vào Thư viện!');
   };
 
   const handleDeleteScript = (id) => {
-    showConfirm('Xác nhận xóa', 'Bạn có chắc muốn xóa kịch bản này?', () => {
-      saveScriptsToStorage(scripts.filter((s) => s.id !== id));
+    showConfirm('Xác nhận xóa', 'Bạn có chắc muốn xóa kịch bản này khỏi thư viện?', async () => {
+      const currentScripts = Array.isArray(latestDataRef.current.scripts)
+        ? latestDataRef.current.scripts
+        : scripts;
+      const updatedScripts = currentScripts.filter((s) => s.id !== id);
+
+      setScripts(updatedScripts);
+      localStorage.setItem('haichai_scripts', JSON.stringify(updatedScripts));
+
+      latestDataRef.current = {
+        ...latestDataRef.current,
+        scripts: updatedScripts,
+      };
+
+      if (viewingScript?.id === id) {
+        setViewingScript(null);
+      }
+
+      if (currentUser && cloudReady && !currentUser.isOffline) {
+        try {
+          await setDoc(
+            getAppDataRef(),
+            {
+              ...latestDataRef.current,
+              ownerEmail: currentUser.email || '',
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          setSyncStatus('Đã xóa kịch bản trên Cloud');
+          setLastSyncedAt(new Date());
+        } catch (error) {
+          console.error('Firestore delete script error:', error);
+        }
+      }
     });
   };
 
@@ -1879,12 +2002,44 @@ export default function App() {
     showConfirm(
       'Xác nhận xóa',
       'Bạn có chắc muốn xóa kịch bản nháp này?',
-      () => {
-        setDraftScripts((drafts) => {
-          const newDrafts = drafts.filter((d) => d.id !== id);
-          localStorage.setItem('haichai_drafts', JSON.stringify(newDrafts));
-          return newDrafts;
-        });
+      async () => {
+        const currentDrafts = Array.isArray(latestDataRef.current.draftScripts)
+          ? latestDataRef.current.draftScripts
+          : draftScripts;
+        const updatedDrafts = currentDrafts.filter((d) => d.id !== id);
+
+        deletedDraftIdsRef.current.add(id);
+        pendingDraftIdsRef.current.delete(id);
+
+        setDraftScripts(updatedDrafts);
+        localStorage.setItem('haichai_drafts', JSON.stringify(updatedDrafts));
+
+        latestDataRef.current = {
+          ...latestDataRef.current,
+          draftScripts: updatedDrafts,
+        };
+
+        if (viewingScript?.id === id) {
+          setViewingScript(null);
+        }
+
+        if (currentUser && cloudReady && !currentUser.isOffline) {
+          try {
+            await setDoc(
+              getAppDataRef(),
+              {
+                ...latestDataRef.current,
+                ownerEmail: currentUser.email || '',
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+            setSyncStatus('Đã xóa draft trên Cloud');
+            setLastSyncedAt(new Date());
+          } catch (error) {
+            console.error('Firestore delete draft error:', error);
+          }
+        }
       }
     );
   };
@@ -3443,6 +3598,14 @@ export default function App() {
                 {viewingScript.title}
               </h3>
               <div className="flex gap-2 sm:gap-4 items-center shrink-0">
+                {draftScripts.some((d) => d.id === viewingScript.id) && (
+                  <button
+                    onClick={() => handleSaveDraftToLibrary(viewingScript.id)}
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
+                  >
+                    <IconCheck /> <span className="hidden sm:inline">Duyệt Lưu</span>
+                  </button>
+                )}
                 <button
                   onClick={() => handleExportPDF(viewingScript)}
                   className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
