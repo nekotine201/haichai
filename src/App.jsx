@@ -164,6 +164,22 @@ const IconPrinter = () => (
     <rect width="12" height="8" x="6" y="14" />
   </svg>
 );
+const IconEdit = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
 const IconTrash = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1170,6 +1186,7 @@ export default function App() {
   const [bible, setBible] = useState(DEFAULT_CONTENT_BIBLE);
   const [scripts, setScripts] = useState([]);
   const [viewingScript, setViewingScript] = useState(null);
+  const [editingScript, setEditingScript] = useState(null);
 
   // Library State
   const [searchTerm, setSearchTerm] = useState('');
@@ -1665,6 +1682,117 @@ export default function App() {
 
   const handleBibleChange = (e) => {
     setBible(e.target.value);
+  };
+
+  const handleStartEditScript = (script) => {
+    setEditingScript(JSON.parse(JSON.stringify(script)));
+  };
+
+  const updateEditScene = (index, field, value) => {
+    setEditingScript((prev) => {
+      if (!prev) return prev;
+      const newScenes = [...(prev.scenes || [])];
+      newScenes[index] = { ...newScenes[index], [field]: value };
+      return { ...prev, scenes: newScenes };
+    });
+  };
+
+  const addEditScene = () => {
+    setEditingScript((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        scenes: [
+          ...(prev.scenes || []),
+          {
+            name: `Cảnh ${(prev.scenes || []).length + 1}`,
+            content: '',
+            visualSuggestion: '',
+          },
+        ],
+      };
+    });
+  };
+
+  const removeEditScene = (index) => {
+    setEditingScript((prev) => {
+      if (!prev) return prev;
+      const newScenes = (prev.scenes || []).filter((_, i) => i !== index);
+      return { ...prev, scenes: newScenes };
+    });
+  };
+
+  const handleSaveEditedScript = async () => {
+    if (!editingScript || !editingScript.title.trim()) {
+      return showAlert('Thiếu thông tin', 'Vui lòng nhập tiêu đề kịch bản!');
+    }
+
+    const updatedScript = {
+      ...editingScript,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const currentScripts = Array.isArray(latestDataRef.current.scripts)
+      ? latestDataRef.current.scripts
+      : scripts;
+    const currentDrafts = Array.isArray(latestDataRef.current.draftScripts)
+      ? latestDataRef.current.draftScripts
+      : draftScripts;
+
+    const isLibraryScript = currentScripts.some((s) => s.id === updatedScript.id);
+    const isDraftScript = currentDrafts.some((d) => d.id === updatedScript.id);
+
+    let updatedScripts = currentScripts;
+    let updatedDrafts = currentDrafts;
+
+    if (isLibraryScript) {
+      updatedScripts = currentScripts.map((s) =>
+        s.id === updatedScript.id ? updatedScript : s
+      );
+      setScripts(updatedScripts);
+      localStorage.setItem('haichai_scripts', JSON.stringify(updatedScripts));
+    } else if (isDraftScript) {
+      updatedDrafts = currentDrafts.map((d) =>
+        d.id === updatedScript.id ? updatedScript : d
+      );
+      setDraftScripts(updatedDrafts);
+      localStorage.setItem('haichai_drafts', JSON.stringify(updatedDrafts));
+    } else {
+      updatedScripts = [updatedScript, ...currentScripts];
+      setScripts(updatedScripts);
+      localStorage.setItem('haichai_scripts', JSON.stringify(updatedScripts));
+    }
+
+    latestDataRef.current = {
+      ...latestDataRef.current,
+      scripts: updatedScripts,
+      draftScripts: updatedDrafts,
+    };
+
+    if (viewingScript?.id === updatedScript.id) {
+      setViewingScript(updatedScript);
+    }
+
+    if (currentUser && cloudReady && !currentUser.isOffline) {
+      try {
+        await setDoc(
+          getAppDataRef(),
+          {
+            ...latestDataRef.current,
+            ownerEmail: currentUser.email || '',
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        setSyncStatus('Đã cập nhật kịch bản & đồng bộ Cloud');
+        setLastSyncedAt(new Date());
+      } catch (error) {
+        console.error('Firestore update script error:', error);
+      }
+    }
+
+    setEditingScript(null);
+    showAlert('Thành công', 'Đã cập nhật kịch bản thành công!');
   };
 
   const handleSaveManualScript = () => {
@@ -2202,6 +2330,293 @@ export default function App() {
     );
   };
 
+  const renderEditScriptModal = () => {
+    if (!editingScript) return null;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 md:p-8 z-[70]">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in">
+          <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                <IconEdit />
+              </span>
+              <h3 className="text-lg font-bold text-slate-800">
+                Chỉnh sửa kịch bản
+              </h3>
+            </div>
+            <button
+              onClick={() => setEditingScript(null)}
+              className="text-slate-400 hover:text-slate-600 font-bold text-2xl leading-none cursor-pointer"
+            >
+              &times;
+            </button>
+          </div>
+
+          <div className="p-6 overflow-y-auto bg-white flex-1 space-y-6 text-sm">
+            {/* Hàng 1: Tiêu đề & Nhóm */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Tiêu đề kịch bản (*)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  value={editingScript.title || ''}
+                  onChange={(e) =>
+                    setEditingScript({ ...editingScript, title: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Nhóm nội dung
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  value={editingScript.category || CATEGORIES[0]}
+                  onChange={(e) =>
+                    setEditingScript({ ...editingScript, category: e.target.value })
+                  }
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Hàng 2: Chủ đề & Main Message */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Từ khóa Chủ đề
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  value={editingScript.topic || ''}
+                  onChange={(e) =>
+                    setEditingScript({ ...editingScript, topic: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Thông điệp chính
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  value={editingScript.mainMessage || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      mainMessage: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <hr className="border-slate-100" />
+
+            {/* Hook */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 text-[#0d71ba]">
+                  Câu Hook (Mở đầu)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-[#0d71ba] bg-blue-50/30 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[60px]"
+                  value={editingScript.selectedHook || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      selectedHook: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Lý do chọn Hook này
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-xs text-slate-600"
+                  value={editingScript.selectedHookReason || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      selectedHookReason: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Scenes */}
+            <div>
+              <div className="flex justify-between items-end mb-3">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Các phân cảnh chi tiết
+                </label>
+                <button
+                  onClick={addEditScene}
+                  className="text-xs bg-[#0d71ba] text-white hover:opacity-90 px-3 py-1 rounded font-medium flex items-center gap-1 transition cursor-pointer"
+                >
+                  <IconPlus /> Thêm cảnh
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {(editingScript.scenes || []).map((scene, index) => (
+                  <div
+                    key={index}
+                    className="p-4 border border-slate-200 rounded-lg bg-slate-50 relative group"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <input
+                        type="text"
+                        className="font-bold bg-transparent border-none focus:ring-0 p-0 text-slate-700 text-sm w-32 outline-none"
+                        value={scene.name || ''}
+                        onChange={(e) =>
+                          updateEditScene(index, 'name', e.target.value)
+                        }
+                        placeholder="Tên cảnh..."
+                      />
+                      {(editingScript.scenes || []).length > 1 && (
+                        <button
+                          onClick={() => removeEditScene(index)}
+                          className="text-red-500 hover:text-red-700 transition-opacity p-1 cursor-pointer"
+                          title="Xóa cảnh"
+                        >
+                          <IconTrash />
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <textarea
+                        className="w-full px-3 py-2 border border-slate-300 rounded bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[60px] text-sm"
+                        placeholder="Lời thoại (Voice / Nói trực tiếp)..."
+                        value={scene.content || ''}
+                        onChange={(e) =>
+                          updateEditScene(index, 'content', e.target.value)
+                        }
+                      />
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-slate-300 rounded bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm text-slate-600 italic"
+                        placeholder="Góc máy / Hành động..."
+                        value={scene.visualSuggestion || ''}
+                        onChange={(e) =>
+                          updateEditScene(
+                            index,
+                            'visualSuggestion',
+                            e.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Câu kết */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Câu Kết (Call to Action / Chốt vấn đề)
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[60px]"
+                value={editingScript.ending || ''}
+                onChange={(e) =>
+                  setEditingScript({
+                    ...editingScript,
+                    ending: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <hr className="border-slate-100" />
+
+            {/* Hậu kỳ */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Text on screen (Chữ nổi trên màn hình)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+                  value={editingScript.textOnScreen || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      textOnScreen: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Caption bài đăng (Kèm Hashtag)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[80px] bg-white"
+                  value={editingScript.caption || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      caption: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-red-700 uppercase tracking-wider mb-2">
+                  Ghi chú an toàn (Nếu có)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none min-h-[80px] bg-red-50"
+                  value={editingScript.notes || ''}
+                  onChange={(e) =>
+                    setEditingScript({
+                      ...editingScript,
+                      notes: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Modal */}
+          <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
+            <button
+              onClick={() => setEditingScript(null)}
+              className="px-5 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={handleSaveEditedScript}
+              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition shadow-sm flex items-center gap-2 cursor-pointer"
+            >
+              <IconCheck /> Lưu thay đổi
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderSidebar = () => (
     <div className={`w-64 text-white flex flex-col h-screen fixed top-0 left-0 bg-[#0d2440] z-50 transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
       <div className="p-6 flex items-center justify-between">
@@ -2385,13 +2800,20 @@ export default function App() {
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => setViewingScript(script)}
-                        className="text-[#0d71ba] hover:opacity-70 font-semibold text-sm mr-4 transition cursor-pointer"
+                        className="text-[#0d71ba] hover:opacity-70 font-semibold text-sm mr-3 transition cursor-pointer"
                       >
                         Xem
                       </button>
                       <button
+                        onClick={() => handleStartEditScript(script)}
+                        className="text-amber-600 hover:text-amber-800 font-semibold text-sm mr-3 transition cursor-pointer"
+                        title="Sửa kịch bản này"
+                      >
+                        Sửa
+                      </button>
+                      <button
                         onClick={() => handleExportPDF(script)}
-                        className="text-[#0d71ba] hover:opacity-70 font-semibold text-sm mr-4 transition cursor-pointer"
+                        className="text-[#0d71ba] hover:opacity-70 font-semibold text-sm mr-3 transition cursor-pointer"
                         title="In/Xuất PDF"
                       >
                         In/PDF
@@ -2454,22 +2876,28 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="pt-2.5 border-t border-slate-100 grid grid-cols-3 gap-2">
+                <div className="pt-2.5 border-t border-slate-100 grid grid-cols-4 gap-1.5">
                   <button
                     onClick={() => setViewingScript(script)}
-                    className="text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[#0d71ba] py-2 rounded-lg font-bold text-xs transition"
+                    className="text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[#0d71ba] py-2 rounded-lg font-bold text-xs transition cursor-pointer"
                   >
                     Xem
                   </button>
                   <button
+                    onClick={() => handleStartEditScript(script)}
+                    className="text-center bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 py-2 rounded-lg font-bold text-xs transition cursor-pointer"
+                  >
+                    Sửa
+                  </button>
+                  <button
                     onClick={() => handleExportPDF(script)}
-                    className="text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[#0d71ba] py-2 rounded-lg font-bold text-xs transition"
+                    className="text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[#0d71ba] py-2 rounded-lg font-bold text-xs transition cursor-pointer"
                   >
                     In/PDF
                   </button>
                   <button
                     onClick={() => handleDeleteScript(script.id)}
-                    className="text-center bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 py-2 rounded-lg font-bold text-xs transition"
+                    className="text-center bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 py-2 rounded-lg font-bold text-xs transition cursor-pointer"
                   >
                     Xóa
                   </button>
@@ -3164,22 +3592,32 @@ export default function App() {
                       </span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 w-full mt-3 md:mt-0 md:flex md:w-auto md:items-center md:gap-3">
+                  <div className="grid grid-cols-3 gap-2 w-full mt-3 md:mt-0 md:flex md:w-auto md:items-center md:gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSaveDraftToLibrary(script.id);
                       }}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm h-[42px] cursor-pointer"
+                      className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition shadow-sm h-[42px] cursor-pointer"
                     >
                       <IconCheck /> Duyệt Lưu
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        handleStartEditScript(script);
+                      }}
+                      className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition shadow-sm h-[42px] cursor-pointer"
+                      title="Sửa kịch bản nháp"
+                    >
+                      <IconEdit /> Sửa
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleDeleteDraft(script.id);
                       }}
-                      className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 px-3 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm h-[42px] cursor-pointer"
+                      className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 px-2.5 py-2 rounded-lg font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition shadow-sm h-[42px] cursor-pointer"
                       title="Xóa nháp này"
                     >
                       <IconTrash /> Xóa nháp
@@ -3597,7 +4035,7 @@ export default function App() {
               <h3 className="text-base sm:text-lg font-bold text-slate-800 truncate mr-3">
                 {viewingScript.title}
               </h3>
-              <div className="flex gap-2 sm:gap-4 items-center shrink-0">
+              <div className="flex gap-2 sm:gap-3 items-center shrink-0">
                 {draftScripts.some((d) => d.id === viewingScript.id) && (
                   <button
                     onClick={() => handleSaveDraftToLibrary(viewingScript.id)}
@@ -3606,6 +4044,12 @@ export default function App() {
                     <IconCheck /> <span className="hidden sm:inline">Duyệt Lưu</span>
                   </button>
                 )}
+                <button
+                  onClick={() => handleStartEditScript(viewingScript)}
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
+                >
+                  <IconEdit /> <span className="hidden sm:inline">Sửa kịch bản</span>
+                </button>
                 <button
                   onClick={() => handleExportPDF(viewingScript)}
                   className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
@@ -3707,6 +4151,9 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {renderModal()}
+      {renderEditScriptModal()}
 
       {/* Global Styles for simple anmations & CSS Reset */}
       <style
