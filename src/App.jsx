@@ -960,6 +960,10 @@ const generateTopicsFromAI = async (bible, currentScripts, topicCount = 30, topi
 Dựa trên Content Bible và thư viện kịch bản cũ, hãy tạo ra CHÍNH XÁC ${safeTopicCount} chủ đề mới theo đúng tỉ lệ sau:
 ${distributionLines}
 
+QUY TẮC AN TOÀN BẮT BUỘC VỀ NỘI DUNG ĐỒ UỐNG CÓ CỒN (CONTENT BIBLE STRICT RULES):
+- TUYỆT ĐỐI CẤM dùng các từ ngữ gợi ý thèm uống, kích thích tiêu thụ hoặc mô tả cảm giác uống để kích cầu như: "nghiện", "thèm", "mê", "khoái", "dễ uống", "uống được nhiều", "uống nhiều lên", "phê", "uống thả ga".
+- TẤT CẢ các chủ đề có liên quan đến đồ uống có cồn/cider PHẢI hướng góc nhìn về QUẢN TRỊ VẬN HÀNH, KIỂM SOÁT NGUỒN GỐC GIẤY TỜ, ĐÀO TẠO NHÂN VIÊN TƯ VẤN CÓ TRÁCH NHIỆM, HOẶC BÀI HỌC KINH DOANH CHUỖI.
+
 TUYỆT ĐỐI QUAN TRỌNG ĐỂ ĐẢM BẢO CHẤT LƯỢNG VÀ TRÁNH TRÙNG LẶP Ý TƯỞNG:
 1. ĐA DẠNG HÓA GÓC NHÌN (CỰC KỲ QUAN TRỌNG): Các chủ đề được tạo ra phải vô cùng phong phú, tuyệt đối không được na ná hay lặp đi lặp lại một ý tưởng cũ. Hãy khai thác từ nhiều lăng kính độc đáo khác nhau:
    - Góc nhìn tâm lý học hành vi / Thói quen người tiêu dùng.
@@ -976,7 +980,7 @@ TUYỆT ĐỐI QUAN TRỌNG ĐỂ ĐẢM BẢO CHẤT LƯỢNG VÀ TRÁNH TRÙNG
    - JSON phải parse được bằng JSON.parse().
    - BẮT BUỘC mảng topics có đúng ${safeTopicCount} items.
    - Không trùng với các chủ đề đã có trong thư viện kịch bản cũ.
-   - Không biến nội dung thành quảng cáo rượu, không cổ vũ uống rượu.
+   - Không biến nội dung thành quảng cáo rượu, không cổ vũ hay khuyến khích uống rượu dưới mọi hình thức.
    - Ưu tiên hook hấp dẫn, bất ngờ, gây tò mò cực lớn hoặc khơi gợi nỗi đau/mong muốn thật của người xem.
    - duplicateRiskScore là điểm đánh giá từ 0-100 về khả năng trùng lặp ý tưởng với thư viện cũ (càng thấp càng an toàn).`;
 
@@ -1034,20 +1038,31 @@ const generateScriptsBatchFromAI = async (topics, bible, currentScripts, targetD
   const systemPrompt = `Bạn là Script Writer kiêm Content Editor cho kênh TikTok nhân hiệu Haichai.
 Nhiệm vụ của bạn là viết kịch bản chi tiết cho CÁC chủ đề được cung cấp. Bắt buộc bám Content Bible và thư viện cũ để tránh trùng lặp.
 
+QUY TẮC BẢO VỆ AN TOÀN NỘI DUNG CONTENT BIBLE (CỰC KỲ NGHIÊM NGẠT - STRICT NEGATIVE CONSTRAINTS):
+1. CẤM TUYỆT ĐỐI CÁC TỪ KÍCH THÍCH UỐNG / TẠO CẢM GIÁC THÈM UỐNG / MÔ TẢ VỊ NGON UỐNG NHIỀU:
+   ❌ KHÔNG BAO GIỜ DÙNG các từ/cụm từ: "nghiện", "thèm", "mê", "khoái", "dễ uống", "uống được nhiều", "uống nhiều hơn", "uống nhẹ độ đi để uống được nhiều", "phê", "uống thả ga", "ngon gắt", "nghiện cái vị đó".
+2. TÂM THẾ NHÂN VẬT OPPIE:
+   - Oppie là Chủ chuỗi / Người vận hành kinh doanh. Oppie NÓI VỀ QUẢN TRỊ, GIẤY TỜ MINH BẠCH, TƯ VẤN CÓ TRÁCH NHIỆM VÀ TRẢI NGHIỆM KHÁCH HÀNG, chứ KHÔNG NÓI VỀ SỰ THÍCH/UỐNG RƯỢU CỦA BẢN THÂN.
+   - CẤM thoại kiểu "Tôi cũng nghiện cái vị đó", "Tôi cũng khoái", "Uống rất dễ không gắt".
+   - Nếu đề cập đến xu hướng thị trường (ví dụ cider), PHẢI dùng ngôn ngữ trung tính phân tích ngành: "Thị trường gần đây ghi nhận xu hướng quan tâm đến dòng đồ uống cồn nhẹ từ trái cây", "Sự phổ biến của một nhóm sản phẩm đòi hỏi quy trình kiểm soát tem nhãn và giấy tờ chứng nhận xuất xứ khắt khe hơn bao giờ hết."
+3. BÁM SÁT THÔNG ĐIỆP KINH DOANH TRÁCH NHIỆM:
+   - Không cổ vũ, không rủ rê, không quảng cáo uống đồ uống có cồn.
+   - Nhấn mạnh đào tạo nhân viên tư vấn đúng sự thật, không nói quá, hướng tới tiêu dùng có trách nhiệm và tuân thủ pháp luật.
+
 Yêu cầu về ĐỘ DÀI VÀ SỐ CẢNH (RẤT QUAN TRỌNG):
-\${
+${
   targetDuration === '30-45s'
-    ? \`- Bạn ĐANG viết kịch bản thời lượng NGẮN (30–45 giây).
+    ? `- Bạn ĐANG viết kịch bản thời lượng NGẮN (30–45 giây).
 - Số lượng cảnh (scenes) tối ưu: từ 3 đến 4 cảnh.
-- Tổng số từ phát âm (phần lời thoại/nội dung nói) cho cả kịch bản: khoảng 90 đến 120 từ. Mỗi cảnh chỉ nên có từ 1-2 câu ngắn gọn, súc tích.\`
+- Tổng số từ phát âm (phần lời thoại/nội dung nói) cho cả kịch bản: khoảng 90 đến 120 từ. Mỗi cảnh chỉ nên có từ 1-2 câu ngắn gọn, súc tích.`
     : targetDuration === '90-120s'
-    ? \`- Bạn ĐANG viết kịch bản thời lượng DÀI (90–120 giây).
+    ? `- Bạn ĐANG viết kịch bản thời lượng DÀI (90–120 giây).
 - Số lượng cảnh (scenes) tối ưu: từ 7 đến 10 cảnh chi tiết.
 - Tổng số từ phát âm (phần lời thoại/nội dung nói) cho cả kịch bản: PHẢI từ 250 đến 350 từ để đảm bảo độ dài khi nói đạt 90-120 giây.
-- Mỗi cảnh (scenes) phải được viết cực kỳ chi tiết, nhiều lời thoại giải thích sâu sắc, phân tích rõ ràng, không viết qua loa hay quá ngắn gọn.\`
-    : \`- Bạn ĐANG viết kịch bản thời lượng TRUNG BÌNH (60–75 giây).
+- Mỗi cảnh (scenes) phải được viết cực kỳ chi tiết, nhiều lời thoại giải thích sâu sắc, phân tích rõ ràng, không viết qua loa hay quá ngắn gọn.`
+    : `- Bạn ĐANG viết kịch bản thời lượng TRUNG BÌNH (60–75 giây).
 - Số lượng cảnh (scenes) tối ưu: từ 5 đến 6 cảnh.
-- Tổng số từ phát âm (phần lời thoại/nội dung nói) cho cả kịch bản: khoảng 170 đến 220 từ. Các cảnh phân tích vừa đủ, chuyển cảnh tự nhiên.\`
+- Tổng số từ phát âm (phần lời thoại/nội dung nói) cho cả kịch bản: khoảng 170 đến 220 từ. Các cảnh phân tích vừa đủ, chuyển cảnh tự nhiên.`
 }
 
 Yêu cầu CHUNG cho mỗi kịch bản:
