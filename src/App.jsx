@@ -1665,7 +1665,7 @@ export default function App() {
 
   // Tự động sync mọi thay đổi lên Firestore, có debounce để không ghi liên tục từng ký tự.
   useEffect(() => {
-    if (!currentUser || !cloudReady || syncingFromCloudRef.current || currentUser.isOffline) return;
+    if (!currentUser || syncingFromCloudRef.current || currentUser.isOffline) return;
 
     setSyncStatus('Đang chờ đồng bộ...');
     const timeout = setTimeout(async () => {
@@ -1683,6 +1683,7 @@ export default function App() {
 
         setSyncStatus('Đã đồng bộ Firestore');
         setLastSyncedAt(new Date());
+        setCloudReady(true);
       } catch (error) {
         console.error('Firestore save error:', error);
         setSyncStatus(`Lỗi lưu Firestore: ${error.message}`);
@@ -1690,7 +1691,7 @@ export default function App() {
     }, 900);
 
     return () => clearTimeout(timeout);
-  }, [currentUser, cloudReady, bible, scripts, draftScripts, generatedTopics]);
+  }, [currentUser, bible, scripts, draftScripts, generatedTopics]);
 
   const saveScriptsToStorage = (newScripts) => {
     setScripts(newScripts);
@@ -1713,7 +1714,7 @@ export default function App() {
       draftScripts: safeDraftScripts,
     };
 
-    if (!currentUser || !cloudReady || currentUser.isOffline) return;
+    if (!currentUser || currentUser.isOffline) return;
 
     try {
       const latestData = {
@@ -1732,6 +1733,7 @@ export default function App() {
       );
       setSyncStatus('Đã đồng bộ draft lên Firestore');
       setLastSyncedAt(new Date());
+      setCloudReady(true);
     } catch (error) {
       console.error('Firestore draft save error:', error);
       setSyncStatus(`Lỗi lưu draft Firestore: ${error.message}`);
@@ -1785,8 +1787,10 @@ export default function App() {
       return showAlert('Thiếu thông tin', 'Vui lòng nhập tiêu đề kịch bản!');
     }
 
+    const cleanEditingScript = sanitizeForFirestore(editingScript);
+
     const updatedScript = {
-      ...editingScript,
+      ...cleanEditingScript,
       updatedAt: new Date().toISOString(),
     };
 
@@ -1838,8 +1842,9 @@ export default function App() {
       setViewingScript(updatedScript);
     }
 
-    if (currentUser && cloudReady && !currentUser.isOffline) {
+    if (currentUser && !currentUser.isOffline) {
       try {
+        setSyncStatus('Đang lưu kịch bản lên Cloud...');
         const payload = sanitizeForFirestore({
           ...nextData,
           ownerEmail: currentUser.email || '',
@@ -1848,9 +1853,11 @@ export default function App() {
         await setDoc(getAppDataRef(), payload, { merge: true });
         setSyncStatus('Đã cập nhật kịch bản & đồng bộ Cloud');
         setLastSyncedAt(new Date());
+        setCloudReady(true);
       } catch (error) {
         console.error('Firestore update script error:', error);
         setSyncStatus(`Lỗi lưu Cloud: ${error.message}`);
+        showAlert('Lưu Cloud thất bại', `Kịch bản đã lưu trên máy, nhưng đồng bộ Cloud gặp lỗi: ${error.message}`);
       }
     }
 
