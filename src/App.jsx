@@ -375,6 +375,33 @@ const EMPTY_MANUAL_SCRIPT = {
 };
 
 
+// Hàm làm sạch dữ liệu trước khi lưu lên Firestore (Loại bỏ triệt để các thuộc tính undefined gây lỗi Firestore setDoc)
+const sanitizeForFirestore = (data) => {
+  if (data === null || data === undefined) return '';
+  if (typeof data !== 'object') return data;
+
+  // Giữ nguyên FieldValue của Firestore (ví dụ serverTimestamp())
+  if (
+    data._methodName ||
+    (data.constructor && data.constructor.name === 'FieldValue')
+  ) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForFirestore(item));
+  }
+
+  const cleanObj = {};
+  Object.keys(data).forEach((key) => {
+    const val = data[key];
+    if (val !== undefined) {
+      cleanObj[key] = sanitizeForFirestore(val);
+    }
+  });
+  return cleanObj;
+};
+
 // Firestore có thể trả về snapshot cũ ngay sau khi user tick chọn chủ đề.
 // Giữ trạng thái selected hiện tại trên máy để checkbox không bị tự hủy tick.
 const mergeTopicsPreservingLocalSelection = (incomingTopics = [], currentTopics = []) => {
@@ -394,8 +421,7 @@ const mergeTopicsPreservingLocalSelection = (incomingTopics = [], currentTopics 
   });
 };
 
-// Firestore cũng có thể trả snapshot cũ ngay sau khi AI vừa tạo draft hoặc người dùng vừa duyệt/xóa draft.
-// Lọc bỏ những draft đã bị xóa/duyệt locally để không bị snapshot Firestore cũ nhảy đè lại.
+// Merge draft kịch bản: Ưu tiên dữ liệu local mới hơn hoặc không bị snapshot Firestore cũ nhảy đè lại.
 const mergeDraftScriptsPreservingLocal = (
   incomingDrafts = [],
   currentDrafts = [],
@@ -403,38 +429,55 @@ const mergeDraftScriptsPreservingLocal = (
 ) => {
   const draftsById = new Map();
 
-  incomingDrafts.forEach((draft) => {
+  // Đưa draft local vào trước
+  currentDrafts.forEach((draft) => {
     if (draft?.id && !deletedDraftIds.has(draft.id)) {
       draftsById.set(draft.id, draft);
     }
   });
 
-  currentDrafts.forEach((draft) => {
-    if (
-      draft?.id &&
-      !deletedDraftIds.has(draft.id) &&
-      !draftsById.has(draft.id)
-    ) {
+  // Merge draft từ cloud: Chỉ ghi đè nếu bản từ cloud có updatedAt mới hơn bản local
+  incomingDrafts.forEach((draft) => {
+    if (!draft?.id || deletedDraftIds.has(draft.id)) return;
+    const existing = draftsById.get(draft.id);
+    if (!existing) {
       draftsById.set(draft.id, draft);
+    } else {
+      const incomingTime = new Date(draft.updatedAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || 0).getTime();
+      if (incomingTime > existingTime) {
+        draftsById.set(draft.id, draft);
+      }
     }
   });
 
   return Array.from(draftsById.values());
 };
 
+// Merge kịch bản thư viện: Ưu tiên dữ liệu local mới hơn
 const mergeScriptsPreservingLocal = (
   incomingScripts = [],
   currentScripts = []
 ) => {
   const scriptsById = new Map();
 
-  incomingScripts.forEach((script) => {
+  // Đưa script local vào trước
+  currentScripts.forEach((script) => {
     if (script?.id) scriptsById.set(script.id, script);
   });
 
-  currentScripts.forEach((script) => {
-    if (script?.id && !scriptsById.has(script.id)) {
+  // Merge script từ cloud: Chỉ ghi đè nếu bản từ cloud có updatedAt mới hơn bản local
+  incomingScripts.forEach((script) => {
+    if (!script?.id) return;
+    const existing = scriptsById.get(script.id);
+    if (!existing) {
       scriptsById.set(script.id, script);
+    } else {
+      const incomingTime = new Date(script.updatedAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || 0).getTime();
+      if (incomingTime > existingTime) {
+        scriptsById.set(script.id, script);
+      }
     }
   });
 
@@ -1590,12 +1633,12 @@ export default function App() {
           } else {
             await setDoc(
               ref,
-              {
+              sanitizeForFirestore({
                 ...latestDataRef.current,
                 ownerEmail: currentUser.email || '',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-              },
+              }),
               { merge: true }
             );
 
@@ -1630,11 +1673,11 @@ export default function App() {
         const latestData = latestDataRef.current;
         await setDoc(
           getAppDataRef(),
-          {
+          sanitizeForFirestore({
             ...latestData,
             ownerEmail: currentUser.email || '',
             updatedAt: serverTimestamp(),
-          },
+          }),
           { merge: true }
         );
 
@@ -1680,11 +1723,11 @@ export default function App() {
 
       await setDoc(
         getAppDataRef(),
-        {
+        sanitizeForFirestore({
           ...latestData,
           ownerEmail: currentUser.email || '',
           updatedAt: serverTimestamp(),
-        },
+        }),
         { merge: true }
       );
       setSyncStatus('Đã đồng bộ draft lên Firestore');
@@ -1738,7 +1781,7 @@ export default function App() {
   };
 
   const handleSaveEditedScript = async () => {
-    if (!editingScript || !editingScript.title.trim()) {
+    if (!editingScript || !editingScript.title?.trim()) {
       return showAlert('Thiếu thông tin', 'Vui lòng nhập tiêu đề kịch bản!');
     }
 
@@ -1746,6 +1789,12 @@ export default function App() {
       ...editingScript,
       updatedAt: new Date().toISOString(),
     };
+
+    // Đánh dấu vừa thay đổi local để guard tránh bị snapshot cũ của Firestore đè lại
+    lastDraftLocalChangeAtRef.current = Date.now();
+    if (updatedScript.id) {
+      pendingDraftIdsRef.current.add(updatedScript.id);
+    }
 
     const currentScripts = Array.isArray(latestDataRef.current.scripts)
       ? latestDataRef.current.scripts
@@ -1778,11 +1827,12 @@ export default function App() {
       localStorage.setItem('haichai_scripts', JSON.stringify(updatedScripts));
     }
 
-    latestDataRef.current = {
+    const nextData = {
       ...latestDataRef.current,
       scripts: updatedScripts,
       draftScripts: updatedDrafts,
     };
+    latestDataRef.current = nextData;
 
     if (viewingScript?.id === updatedScript.id) {
       setViewingScript(updatedScript);
@@ -1790,19 +1840,17 @@ export default function App() {
 
     if (currentUser && cloudReady && !currentUser.isOffline) {
       try {
-        await setDoc(
-          getAppDataRef(),
-          {
-            ...latestDataRef.current,
-            ownerEmail: currentUser.email || '',
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+        const payload = sanitizeForFirestore({
+          ...nextData,
+          ownerEmail: currentUser.email || '',
+          updatedAt: serverTimestamp(),
+        });
+        await setDoc(getAppDataRef(), payload, { merge: true });
         setSyncStatus('Đã cập nhật kịch bản & đồng bộ Cloud');
         setLastSyncedAt(new Date());
       } catch (error) {
         console.error('Firestore update script error:', error);
+        setSyncStatus(`Lỗi lưu Cloud: ${error.message}`);
       }
     }
 
