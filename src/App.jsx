@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Teleprompter from './components/Teleprompter';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -213,6 +214,23 @@ const IconPlus = () => (
   >
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
+
+const IconTv = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+    <polyline points="17 2 12 7 7 2" />
   </svg>
 );
 
@@ -1245,6 +1263,7 @@ export default function App() {
   const [scripts, setScripts] = useState([]);
   const [viewingScript, setViewingScript] = useState(null);
   const [editingScript, setEditingScript] = useState(null);
+  const [teleprompterScript, setTeleprompterScript] = useState(null);
 
   // Library State
   const [searchTerm, setSearchTerm] = useState('');
@@ -2713,6 +2732,11 @@ export default function App() {
         {[
           { id: 'library', icon: <IconBook />, label: 'Thư viện kịch bản' },
           {
+            id: 'teleprompter',
+            icon: <IconTv />,
+            label: 'Máy đọc Teleprompter',
+          },
+          {
             id: 'generate-topics',
             icon: <IconSparkles />,
             label: 'Tạo chủ đề',
@@ -2869,6 +2893,16 @@ export default function App() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
+                        onClick={() => {
+                          setTeleprompterScript(script);
+                          setActiveTab('teleprompter');
+                        }}
+                        className="text-emerald-600 hover:text-emerald-800 font-semibold text-sm mr-3 transition cursor-pointer"
+                        title="Đọc kịch bản này bằng Teleprompter"
+                      >
+                        Đọc Teleprompter
+                      </button>
+                      <button
                         onClick={() => setViewingScript(script)}
                         className="text-[#0d71ba] hover:opacity-70 font-semibold text-sm mr-3 transition cursor-pointer"
                       >
@@ -2946,7 +2980,17 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="pt-2.5 border-t border-slate-100 grid grid-cols-4 gap-1.5">
+                <div className="pt-2.5 border-t border-slate-100 grid grid-cols-5 gap-1">
+                  <button
+                    onClick={() => {
+                      setTeleprompterScript(script);
+                      setActiveTab('teleprompter');
+                    }}
+                    className="text-center bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 py-2 rounded-lg font-bold text-xs transition cursor-pointer"
+                    title="Đọc bằng Teleprompter"
+                  >
+                    Đọc
+                  </button>
                   <button
                     onClick={() => setViewingScript(script)}
                     className="text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[#0d71ba] py-2 rounded-lg font-bold text-xs transition cursor-pointer"
@@ -4088,6 +4132,14 @@ export default function App() {
       {renderSidebar()}
       <main className="flex-1 p-4 md:p-8 pt-20 md:pt-8 md:ml-64 h-screen overflow-y-auto">
         {activeTab === 'library' && renderLibrary()}
+        {activeTab === 'teleprompter' && (
+          <Teleprompter
+            scripts={scripts}
+            draftScripts={draftScripts}
+            initialScript={teleprompterScript}
+            onClose={() => setActiveTab('library')}
+          />
+        )}
         {activeTab === 'generate-topics' && renderTopicGenerator()}
         {activeTab === 'generate-scripts' && renderScriptGenerator()}
         {activeTab === 'bible' && renderBible()}
@@ -4119,6 +4171,17 @@ export default function App() {
                   className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
                 >
                   <IconEdit /> <span className="hidden sm:inline">Sửa kịch bản</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setTeleprompterScript(viewingScript);
+                    setViewingScript(null);
+                    setActiveTab('teleprompter');
+                  }}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
+                  title="Đọc bằng Teleprompter"
+                >
+                  <IconTv /> <span className="hidden sm:inline">Đọc Teleprompter</span>
                 </button>
                 <button
                   onClick={() => handleExportPDF(viewingScript)}
